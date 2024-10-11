@@ -78,6 +78,41 @@ qbt_isreachable(){
     nc -4 -vw 5 ${QBITTORRENT_SERVER} ${QBITTORRENT_PORT} &>/dev/null 2>&1
 }
 
+allow_exceptions() {
+    iface=eth0 
+    gw="$(docker exec "${VPN_CT_NAME}" ip route | awk '/default/{print $3}')" 
+    net=${NET_LOCAL} 
+    echo "[$(date -Iseconds)] Enabling connection to network ${net}" 
+    docker exec "${VPN_CT_NAME}" ip route | grep -q "$net" || docker exec "${VPN_CT_NAME}" ip route add "$net" via "$gw" dev "$iface" 
+    docker exec "${VPN_CT_NAME}" iptables -A INPUT   -i "$iface" -s "$net" -j ACCEPT 
+    docker exec "${VPN_CT_NAME}" iptables -A OUTPUT  -o "$iface" -d "$net" -j ACCEPT 
+    docker exec "${VPN_CT_NAME}" iptables -A FORWARD -i "$iface" -d "$net" -j ACCEPT 
+    docker exec "${VPN_CT_NAME}" iptables -A FORWARD -i "$iface" -s "$net" -j ACCEPT 
+    for domain in ${ALLOW_LIST//[;,]/ }; do 
+        domain=$(echo "$domain" | sed 's/^.*:\/\///;s/\/.*$//') 
+        echo "[$(date -Iseconds)] Enabling connection to host ${domain}" 
+        docker exec "${VPN_CT_NAME}" iptables  -A OUTPUT -o "$iface" -d "${domain}" -j ACCEPT 2>/dev/null 
+    done
+}
+
+remove_exceptions() {
+    iface=eth0 
+    gw="$(docker exec "${VPN_CT_NAME}" ip route | awk '/default/{print $3}')" 
+    net=${NET_LOCAL} 
+    echo "[$(date -Iseconds)] Enabling connection to network ${net}" 
+    docker exec "${VPN_CT_NAME}" ip route | grep -q "$net" || docker exec "${VPN_CT_NAME}" ip route del "$net" via "$gw" dev "$iface" 
+    docker exec "${VPN_CT_NAME}" iptables -D INPUT   -i "$iface" -s "$net" -j ACCEPT 
+    docker exec "${VPN_CT_NAME}" iptables -D OUTPUT  -o "$iface" -d "$net" -j ACCEPT 
+    docker exec "${VPN_CT_NAME}" iptables -D FORWARD -i "$iface" -d "$net" -j ACCEPT 
+    docker exec "${VPN_CT_NAME}" iptables -D FORWARD -i "$iface" -s "$net" -j ACCEPT 
+    for domain in ${ALLOW_LIST//[;,]/ }; do 
+        domain=$(echo "$domain" | sed 's/^.*:\/\///;s/\/.*$//') 
+        echo "[$(date -Iseconds)] Enabling connection to host ${domain}" 
+        docker exec "${VPN_CT_NAME}" iptables  -D OUTPUT -o "$iface" -d "${domain}" -j ACCEPT 2>/dev/null 
+    done
+
+}
+
 fw_delrule(){
     if (docker exec "${VPN_CT_NAME}" /sbin/iptables -L INPUT -n | grep -qP "^ACCEPT.*${configured_port}.*"); then
         # shellcheck disable=SC2086
@@ -93,6 +128,7 @@ fw_addrule(){
         docker exec "${VPN_CT_NAME}" /sbin/iptables -A INPUT -i "${VPN_IF_NAME}" -p tcp --dport ${active_port} -j ACCEPT
         # shellcheck disable=SC2086
         docker exec "${VPN_CT_NAME}" /sbin/iptables -A INPUT -i "${VPN_IF_NAME}" -p udp --dport ${active_port} -j ACCEPT
+        allow_exceptions
         return 0
     else
         return 1
@@ -179,6 +215,7 @@ return 0
 }
 
 load_vals(){
+    echo "Loading required values..."
     public_ip=$(getpublicip)
     if qbt_isreachable; then
         if qbt_login; then
@@ -192,6 +229,7 @@ load_vals(){
         exit 6
     fi
     active_port=''
+    echo "Loaded values."
 }
 
 public_ip=
