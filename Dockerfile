@@ -47,6 +47,7 @@ RUN sed -i "/${LANG}/s/^# //g" /etc/locale.gen && \
 
 ENV QBITTORRENT_SERVER=localhost
 ENV QBITTORRENT_PORT=8080
+ENV QBITTORRENT_SERVER_HTTP_OR_HTTPS=http
 ENV QBITTORRENT_USER=admin
 ENV QBITTORRENT_PASS=adminadmin
 ENV VPN_GATEWAY=
@@ -54,6 +55,7 @@ ENV VPN_CT_NAME=gluetun
 ENV VPN_IF_NAME=tun0
 ENV CHECK_INTERVAL=300
 ENV NAT_LEASE_LIFETIME=300
+ENV IPTABLES_PATH=/sbin/iptables-legacy
 
 COPY --from=docker-cli /usr/bin/docker /usr/bin/docker
 COPY data/start.sh /start.sh

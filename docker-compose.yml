@@ -75,11 +75,13 @@ services:
       # - QBITTORRENT_PORT=8080
       # - QBITTORRENT_USER=admin
       # - QBITTORRENT_PASS=adminadmin
+      # - QBITTORRENT_SERVER_HTTP_OR_HTTPS=http
       # - VPN_GATEWAY=
       # - VPN_CT_NAME=gluetun
       # - VPN_IF_NAME=tun0
       # - CHECK_INTERVAL=300
       # - NAT_LEASE_LIFETIME=300
+      # - IPTABLES_PATH=/sbin/iptables-legacy
     network_mode: "service:gluetun"
     depends_on:
       qbittorrent:

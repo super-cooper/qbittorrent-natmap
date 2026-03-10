@@ -45,7 +45,7 @@ getpublicip() {
 }
 
 findconfiguredport() {
-    curl -s -i --header "Referer: http://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}" --cookie "$1" "http://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}/api/v2/app/preferences" | grep -oP '(?<=\"listen_port\"\:)(\d{1,5})'
+    curl -s -k -i --header "Referer: ${QBITTORRENT_SERVER_HTTP_OR_HTTPS}://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}" --cookie "$1" "${QBITTORRENT_SERVER_HTTP_OR_HTTPS}://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}/api/v2/app/preferences" | grep -oP '(?<=\"listen_port\"\:)(\d{1,5})'
 }
 
 findactiveport() {
@@ -56,17 +56,17 @@ findactiveport() {
 }
 
 qbt_login() {
-    qbt_sid=$(curl -s -i --header "Referer: http://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}" --data "username=${QBITTORRENT_USER}" --data-urlencode "password=${QBITTORRENT_PASS}" "http://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}/api/v2/auth/login" | grep -oP '(?!set-cookie:.)SID=.*(?=\;.HttpOnly\;)')
+    qbt_sid=$(curl -s -k -i --header "Referer: ${QBITTORRENT_SERVER_HTTP_OR_HTTPS}://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}" --data "username=${QBITTORRENT_USER}" --data-urlencode "password=${QBITTORRENT_PASS}" "${QBITTORRENT_SERVER_HTTP_OR_HTTPS}://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}/api/v2/auth/login" | grep -oP '(?!set-cookie:.)SID=.*(?=\;.HttpOnly\;)')
     return $?
 }
 
 qbt_changeport(){
-    curl -s -i --header "Referer: http://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}" --cookie "$1" --data-urlencode "json={\"listen_port\":$2,\"random_port\":false,\"upnp\":false}" "http://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}/api/v2/app/setPreferences" >/dev/null 2>&1
+    curl -s -k -i --header "Referer: ${QBITTORRENT_SERVER_HTTP_OR_HTTPS}://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}" --cookie "$1" --data-urlencode "json={\"listen_port\":$2,\"random_port\":false,\"upnp\":false}" "${QBITTORRENT_SERVER_HTTP_OR_HTTPS}://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}/api/v2/app/setPreferences" >/dev/null 2>&1
     return $?
 }
 
 qbt_checksid(){
-    if curl -s --header "Referer: http://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}" --cookie "${qbt_sid}" "http://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}/api/v2/app/version" | grep -qi forbidden; then
+    if curl -s -k --header "Referer: ${QBITTORRENT_SERVER_HTTP_OR_HTTPS}://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}" --cookie "${qbt_sid}" "${QBITTORRENT_SERVER_HTTP_OR_HTTPS}://${QBITTORRENT_SERVER}:${QBITTORRENT_PORT}/api/v2/app/version" | grep -qi forbidden; then
         return 1
     else
         return 0
@@ -114,20 +114,20 @@ remove_exceptions() {
 }
 
 fw_delrule(){
-    if (docker exec "${VPN_CT_NAME}" /sbin/iptables -L INPUT -n | grep -qP "^ACCEPT.*${configured_port}.*"); then
+    if (docker exec "${VPN_CT_NAME}" "${IPTABLES_PATH}" -L INPUT -n | grep -qP "^ACCEPT.*${configured_port}.*"); then
         # shellcheck disable=SC2086
-        docker exec "${VPN_CT_NAME}" /sbin/iptables -D INPUT -i "${VPN_IF_NAME}" -p tcp --dport ${configured_port} -j ACCEPT
+        docker exec "${VPN_CT_NAME}" "${IPTABLES_PATH}" -D INPUT -i "${VPN_IF_NAME}" -p tcp --dport ${configured_port} -j ACCEPT
         # shellcheck disable=SC2086
-        docker exec "${VPN_CT_NAME}" /sbin/iptables -D INPUT -i "${VPN_IF_NAME}" -p udp --dport ${configured_port} -j ACCEPT
+        docker exec "${VPN_CT_NAME}" "${IPTABLES_PATH}" -D INPUT -i "${VPN_IF_NAME}" -p udp --dport ${configured_port} -j ACCEPT
     fi
 }
 
 fw_addrule(){
-    if ! (docker exec "${VPN_CT_NAME}" /sbin/iptables -L INPUT -n | grep -qP "^ACCEPT.*${active_port}.*"); then
+    if ! (docker exec "${VPN_CT_NAME}" "${IPTABLES_PATH}" -L INPUT -n | grep -qP "^ACCEPT.*${active_port}.*"); then
         # shellcheck disable=SC2086
-        docker exec "${VPN_CT_NAME}" /sbin/iptables -A INPUT -i "${VPN_IF_NAME}" -p tcp --dport ${active_port} -j ACCEPT
+        docker exec "${VPN_CT_NAME}" "${IPTABLES_PATH}" -A INPUT -i "${VPN_IF_NAME}" -p tcp --dport ${active_port} -j ACCEPT
         # shellcheck disable=SC2086
-        docker exec "${VPN_CT_NAME}" /sbin/iptables -A INPUT -i "${VPN_IF_NAME}" -p udp --dport ${active_port} -j ACCEPT
+        docker exec "${VPN_CT_NAME}" "${IPTABLES_PATH}" -A INPUT -i "${VPN_IF_NAME}" -p udp --dport ${active_port} -j ACCEPT
         allow_exceptions
         return 0
     else
@@ -200,6 +200,7 @@ while read -r var; do
 done << EOF
 QBITTORRENT_SERVER
 QBITTORRENT_PORT
+QBITTORRENT_SERVER_HTTP_OR_HTTPS
 QBITTORRENT_USER
 QBITTORRENT_PASS
 VPN_GATEWAY
@@ -207,6 +208,7 @@ VPN_CT_NAME
 VPN_IF_NAME
 CHECK_INTERVAL
 NAT_LEASE_LIFETIME
+IPTABLES_PATH
 EOF
 
 [ ! -S /var/run/docker.sock ] && { echo "$(timestamp) | Docker socket doesn't exist or is inaccessible"; exit 2; }
